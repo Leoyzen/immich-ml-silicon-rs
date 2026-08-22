@@ -50,11 +50,11 @@
     <key>ExitTimeOut</key>
     <integer>10</integer>
 
-    <!-- Logs -->
+    <!-- Logs (persistent, survives reboot) -->
     <key>StandardOutPath</key>
-    <string>/tmp/immich-ml-silicon.log</string>
+    <string>/Users/leoyzen/Library/Logs/immich-ml-silicon/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/immich-ml-silicon.err.log</string>
+    <string>/Users/leoyzen/Library/Logs/immich-ml-silicon/stderr.log</string>
 
     <!-- Working directory -->
     <key>WorkingDirectory</key>
