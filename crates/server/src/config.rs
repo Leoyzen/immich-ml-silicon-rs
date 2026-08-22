@@ -51,16 +51,16 @@ impl Config {
             .unwrap_or_else(|_| "5".to_string())
             .parse()?;
 
-        let face_detection_backend = std::env::var("FACE_DETECTION_BACKEND")
+        let face_detection_backend = std::env::var("IMMICH_ML_FACE_DETECTION_BACKEND")
             .unwrap_or_else(|_| "onnx".to_string());
 
-        let face_recognition_backend = std::env::var("FACE_RECOGNITION_BACKEND")
+        let face_recognition_backend = std::env::var("IMMICH_ML_FACE_RECOGNITION_BACKEND")
             .unwrap_or_else(|_| "onnx".to_string());
 
-        let clip_backend = std::env::var("CLIP_BACKEND")
+        let clip_backend = std::env::var("IMMICH_ML_CLIP_BACKEND")
             .unwrap_or_else(|_| "dashscope".to_string());
 
-        let ocr_backend = std::env::var("OCR_BACKEND")
+        let ocr_backend = std::env::var("IMMICH_ML_OCR_BACKEND")
             .unwrap_or_else(|_| "dashscope".to_string());
 
         let det_model_path = std::env::var("IMMICH_ML_DET_MODEL")
