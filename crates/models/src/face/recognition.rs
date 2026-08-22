@@ -90,7 +90,7 @@ impl FaceRecognizer {
             Some(g) => g,
             None => {
                 session_idx = 0;
-                sessions[0].lock().unwrap()
+                sessions[0].lock().unwrap_or_else(|e| e.into_inner())
             }
         };
         tracing::trace!("FaceRecognizer using session {}", session_idx);

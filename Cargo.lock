@@ -905,7 +905,6 @@ dependencies = [
  "image",
  "immich-ml-backends",
  "immich-ml-imaging",
- "rand 0.8.7",
  "reqwest",
  "serde",
  "serde_json",

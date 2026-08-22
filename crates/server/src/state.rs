@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use crate::config::Config;
 use crate::concurrency::ConcurrencyControl;
 use immich_ml_backends::{FaceDetectionBackend, FaceRecognitionBackend, ClipBackend, OcrBackend};
@@ -13,6 +14,7 @@ pub struct AppState {
     pub face_recognizer: Arc<dyn FaceRecognitionBackend>,
     pub clip: Arc<dyn ClipBackend>,
     pub ocr: Arc<dyn OcrBackend>,
+    pub request_counter: AtomicU64,
 }
 
 impl AppState {
@@ -94,6 +96,7 @@ impl AppState {
             face_recognizer,
             clip,
             ocr,
+            request_counter: AtomicU64::new(0),
         })
     }
 }

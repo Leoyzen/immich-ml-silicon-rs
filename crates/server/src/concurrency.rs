@@ -49,7 +49,7 @@ impl ConcurrencyControl {
 
     /// Check if the circuit breaker is tripped (fail-fast mode).
     pub fn is_tripped(&self) -> bool {
-        let ts = self.tripped_at_ms.load(Ordering::Relaxed);
+        let ts = self.tripped_at_ms.load(Ordering::Acquire);
         if ts == 0 {
             return false;
         }
@@ -61,24 +61,24 @@ impl ConcurrencyControl {
             return true;
         }
         // Cooldown expired, reset
-        self.tripped_at_ms.store(0, Ordering::Relaxed);
+        self.tripped_at_ms.store(0, Ordering::Release);
         false
     }
 
     /// Record a successful API call — reset failure counter.
     pub fn record_success(&self) {
-        self.consecutive_failures.store(0, Ordering::Relaxed);
+        self.consecutive_failures.store(0, Ordering::Release);
     }
 
     /// Record a failed API call — increment counter, maybe trip breaker.
     pub fn record_failure(&self) {
-        let count = self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
+        let count = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
         if count >= self.failure_threshold {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u32;
-            self.tripped_at_ms.store(now, Ordering::Relaxed);
+            self.tripped_at_ms.store(now, Ordering::Release);
             tracing::warn!("Circuit breaker tripped after {} consecutive failures", count);
         }
     }

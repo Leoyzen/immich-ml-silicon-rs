@@ -103,7 +103,7 @@ impl FaceDetector {
             Some(g) => g,
             None => {
                 session_idx = 0;
-                sessions[0].lock().unwrap()
+                sessions[0].lock().unwrap_or_else(|e| e.into_inner())
             }
         };
         tracing::trace!("FaceDetector using session {}", session_idx);

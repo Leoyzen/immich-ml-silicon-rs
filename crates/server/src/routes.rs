@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
@@ -19,6 +20,8 @@ pub async fn predict(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> Response {
+    let request_id = format!("{:08x}", state.request_counter.fetch_add(1, Ordering::Relaxed));
+
     // 1. Parse multipart form data
     let mut entries_json: Option<String> = None;
     let mut image_bytes: Option<Vec<u8>> = None;
@@ -78,7 +81,7 @@ pub async fn predict(
     let tasks: Vec<String> = without_deps.iter().chain(with_deps.iter())
         .map(|e| format!("{}/{}", e.task, e.r#type)).collect();
     let tasks_str = tasks.join(", ");
-    tracing::info!("/predict request: tasks=[{}], payload={}", tasks_str,
+    tracing::info!("[{}] /predict request: tasks=[{}], payload={}", request_id, tasks_str,
         if is_image { "image" } else { "text" });
 
     // 5. Build response
@@ -140,7 +143,7 @@ pub async fn predict(
                 }
             }
             _ => {
-                tracing::warn!("Unknown task/type: {}/{}", entry.task, entry.r#type);
+                tracing::warn!("[{}] Unknown task/type: {}/{}", request_id, entry.task, entry.r#type);
             }
         }
     }
@@ -152,7 +155,7 @@ pub async fn predict(
                 let detection = match &face_detection {
                     Some(d) => d,
                     None => {
-                        tracing::warn!("Face recognition requested but no detection output available");
+                        tracing::warn!("[{}] Face recognition requested but no detection output available", request_id);
                         response.insert("facial-recognition".to_string(), json!([]));
                         continue;
                     }
@@ -176,7 +179,7 @@ pub async fn predict(
                 }
             }
             _ => {
-                tracing::warn!("Unknown dependent task: {}/{}", entry.task, entry.r#type);
+                tracing::warn!("[{}] Unknown dependent task: {}/{}", request_id, entry.task, entry.r#type);
             }
         }
     }
@@ -187,7 +190,7 @@ pub async fn predict(
         response.insert("imageWidth".to_string(), json!(w));
     }
 
-    tracing::info!("/predict done: tasks=[{}], keys=[{}]", tasks_str, response.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
+    tracing::info!("[{}] /predict done: tasks=[{}], keys=[{}]", request_id, tasks_str, response.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
     Json(response).into_response()
 }
 
