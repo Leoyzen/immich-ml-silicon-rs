@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.leoyzen.immich-ml-silicon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/yuchen.liu/src/immich-ml-rust/target/release/immich-ml-server</string>
+    </array>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DASHSCOPE_API_KEY</key>
+        <string>YOUR_DASHSCOPE_API_KEY</string>
+        <key>IMMICH_ML_DEVICE</key>
+        <string>coreml</string>
+        <key>IMMICH_ML_DET_MODEL_PATH</key>
+        <string>/Users/yuchen.liu/src/immich-ml-rust/model-cache/det_10g_fixed.onnx</string>
+        <key>IMMICH_ML_REC_MODEL_PATH</key>
+        <string>/Users/yuchen.liu/src/immich-ml-rust/model-cache/w600k_mbf23_fixed.onnx</string>
+        <key>IMMICH_ML_OCR_BACKEND</key>
+        <string>vision</string>
+        <key>IMMICH_ML_FACE_DETECTION_BACKEND</key>
+        <string>onnx</string>
+        <key>IMMICH_ML_CLIP_DIM</key>
+        <string>512</string>
+        <key>IMMICH_ML_MAX_CONCURRENCY</key>
+        <string>10</string>
+        <key>IMMICH_ML_CLIP_BATCH_SIZE</key>
+        <string>10</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <!-- Start on load -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep alive: restart on crash -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Graceful shutdown: send SIGTERM first, wait 10s, then SIGKILL -->
+    <key>ExitTimeOut</key>
+    <integer>10</integer>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>/tmp/immich-ml-silicon.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/immich-ml-silicon.err.log</string>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/yuchen.liu/src/immich-ml-rust</string>
+</dict>
+</plist>
