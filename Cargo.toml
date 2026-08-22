@@ -1,0 +1,41 @@
+[workspace]
+members = [
+    "crates/server",
+    "crates/models",
+    "crates/cloud",
+    "crates/backends",
+    "crates/vision",
+    "spikes/ort-coreml",
+    "spikes/dashscope-api",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+# HTTP server
+axum = "0.7"
+multer = "3"
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTP client (for DashScope API)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# ONNX Runtime
+ort = { version = "2.0.0-rc.13", features = ["download-binaries", "coreml"] }
+ndarray = "0.17"
+# Image processing
+image = "0.25"
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Base64 encoding (for cloud API image transfer)
+base64 = "0.22"
+# Random (for jittered backoff)
+rand = "0.8"
+# Async trait support
+async-trait = "0.1"

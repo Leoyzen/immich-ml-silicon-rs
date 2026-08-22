@@ -1,0 +1,88 @@
+use std::path::PathBuf;
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub port: u16,
+    pub cache_dir: PathBuf,
+    pub dashscope_api_key: String,
+    pub clip_model: String,
+    pub ocr_model: String,
+    pub clip_dim: usize,
+    pub device: String,
+    pub max_concurrency: usize,
+    pub face_detection_backend: String,
+    pub face_recognition_backend: String,
+    pub clip_backend: String,
+    pub ocr_backend: String,
+    pub det_model_path: PathBuf,
+    pub rec_model_path: PathBuf,
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let port = std::env::var("IMMICH_ML_PORT")
+            .unwrap_or_else(|_| "3003".to_string())
+            .parse()?;
+
+        let cache_dir = std::env::var("IMMICH_ML_CACHE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("./model-cache"));
+
+        let dashscope_api_key = std::env::var("DASHSCOPE_API_KEY")
+            .map_err(|_| "DASHSCOPE_API_KEY is required")?;
+
+        let clip_model = std::env::var("IMMICH_ML_CLIP_MODEL")
+            .unwrap_or_else(|_| "qwen3-vl-embedding".to_string());
+
+        let clip_dim = std::env::var("IMMICH_ML_CLIP_DIM")
+            .unwrap_or_else(|_| "512".to_string())
+            .parse()?;
+
+        let ocr_model = std::env::var("IMMICH_ML_OCR_MODEL")
+            .unwrap_or_else(|_| "qwen-vl-ocr".to_string());
+
+        let device = std::env::var("IMMICH_ML_DEVICE")
+            .unwrap_or_else(|_| "coreml".to_string());
+
+        let max_concurrency = std::env::var("IMMICH_ML_MAX_CONCURRENCY")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse()?;
+
+        let face_detection_backend = std::env::var("FACE_DETECTION_BACKEND")
+            .unwrap_or_else(|_| "onnx".to_string());
+
+        let face_recognition_backend = std::env::var("FACE_RECOGNITION_BACKEND")
+            .unwrap_or_else(|_| "onnx".to_string());
+
+        let clip_backend = std::env::var("CLIP_BACKEND")
+            .unwrap_or_else(|_| "dashscope".to_string());
+
+        let ocr_backend = std::env::var("OCR_BACKEND")
+            .unwrap_or_else(|_| "dashscope".to_string());
+
+        let det_model_path = std::env::var("IMMICH_ML_DET_MODEL")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| cache_dir.join("det_10g.onnx"));
+
+        let rec_model_path = std::env::var("IMMICH_ML_REC_MODEL")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| cache_dir.join("w600k_mbf23.onnx"));
+
+        Ok(Self {
+            port,
+            cache_dir,
+            dashscope_api_key,
+            clip_model,
+            ocr_model,
+            clip_dim,
+            device,
+            max_concurrency,
+            face_detection_backend,
+            face_recognition_backend,
+            clip_backend,
+            ocr_backend,
+            det_model_path,
+            rec_model_path,
+        })
+    }
+}
