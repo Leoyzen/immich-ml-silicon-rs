@@ -24,6 +24,7 @@ impl AppState {
             Arc::new(immich_ml_models::FaceDetector::load(
                 config.det_model_path.clone(),
                 &config.device,
+                config.onnx_sessions,
             ).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?)
         } else if config.face_detection_backend == "vision" {
             #[cfg(target_os = "macos")]
@@ -43,6 +44,7 @@ impl AppState {
             Arc::new(immich_ml_models::FaceRecognizer::load(
                 config.rec_model_path.clone(),
                 &config.device,
+                config.onnx_sessions,
             ).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?)
         } else {
             return Err(format!("Unknown face_recognition_backend: {}", config.face_recognition_backend).into());

@@ -14,33 +14,42 @@ use crate::FaceDetectionOutput;
 use immich_ml_backends::{FaceDetectionBackend, ImageInput, BackendError};
 
 pub struct FaceDetector {
-    session: Mutex<Session>,
+    sessions: Vec<Mutex<Session>>,
 }
 
 impl FaceDetector {
     /// Load SCRFD detection model from ONNX file.
-    pub fn load(model_path: PathBuf, device: &str) -> Result<Self, String> {
-        let mut builder = Session::builder()
-            .map_err(|e| format!("Session builder: {}", e))?
-            .with_optimization_level(GraphOptimizationLevel::Level3)
-            .map_err(|e| format!("Opt level: {}", e))?;
+    /// Creates `num_sessions` independent sessions for parallel inference.
+    pub fn load(model_path: PathBuf, device: &str, num_sessions: usize) -> Result<Self, String> {
+        let num_sessions = num_sessions.clamp(1, 4);
+        let mut sessions = Vec::with_capacity(num_sessions);
 
-        if device == "coreml" {
-            let ep = CoreML::default()
-                .with_model_format(ModelFormat::MLProgram)
-                .with_compute_units(ComputeUnits::All)
-                .with_specialization_strategy(SpecializationStrategy::FastPrediction)
-                .build();
-            builder = builder
-                .with_execution_providers([ep])
-                .map_err(|e| format!("CoreML EP: {}", e))?;
+        for i in 0..num_sessions {
+            let mut builder = Session::builder()
+                .map_err(|e| format!("Session builder: {}", e))?
+                .with_optimization_level(GraphOptimizationLevel::Level3)
+                .map_err(|e| format!("Opt level: {}", e))?;
+
+            if device == "coreml" {
+                let ep = CoreML::default()
+                    .with_model_format(ModelFormat::MLProgram)
+                    .with_compute_units(ComputeUnits::All)
+                    .with_specialization_strategy(SpecializationStrategy::FastPrediction)
+                    .build();
+                builder = builder
+                    .with_execution_providers([ep])
+                    .map_err(|e| format!("CoreML EP: {}", e))?;
+            }
+
+            let session = builder
+                .commit_from_file(&model_path)
+                .map_err(|e| format!("Load model {:?} (session {}): {}", model_path, i, e))?;
+            sessions.push(Mutex::new(session));
         }
 
-        let session = builder
-            .commit_from_file(&model_path)
-            .map_err(|e| format!("Load model {:?}: {}", model_path, e))?;
+        tracing::info!("FaceDetector loaded with {} session(s)", num_sessions);
 
-        Ok(Self { session: Mutex::new(session) })
+        Ok(Self { sessions })
     }
 
     /// Run face detection on image bytes.
@@ -65,10 +74,28 @@ impl FaceDetector {
         }
         normalize(input_data.as_slice_mut().unwrap(), 127.5, 128.0);
 
-        // 4. ONNX inference
+        // 4. ONNX inference — pick least-contended session
         let input_tensor = Tensor::from_array(input_data)
             .map_err(|e| format!("Tensor create: {}", e))?;
-        let mut session = self.session.lock().unwrap();
+
+        let mut session_idx = 0usize;
+        let mut session_guard = None;
+        for (i, s) in self.sessions.iter().enumerate() {
+            if let Ok(guard) = s.try_lock() {
+                session_idx = i;
+                session_guard = Some(guard);
+                break;
+            }
+        }
+        let mut session = match session_guard {
+            Some(g) => g,
+            None => {
+                session_idx = 0;
+                self.sessions[0].lock().unwrap()
+            }
+        };
+        tracing::trace!("FaceDetector using session {}", session_idx);
+
         let outputs = session.run(ort::inputs![input_tensor.view()])
             .map_err(|e| format!("Inference: {}", e))?;
 

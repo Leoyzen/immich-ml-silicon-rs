@@ -16,6 +16,7 @@ pub struct Config {
     pub ocr_backend: String,
     pub det_model_path: PathBuf,
     pub rec_model_path: PathBuf,
+    pub onnx_sessions: usize,
 }
 
 impl Config {
@@ -68,6 +69,12 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| cache_dir.join("w600k_mbf23.onnx"));
 
+        let onnx_sessions = std::env::var("IMMICH_ML_ONNX_SESSIONS")
+            .unwrap_or_else(|_| "2".to_string())
+            .parse::<usize>()
+            .unwrap_or(2)
+            .clamp(1, 4);
+
         Ok(Self {
             port,
             cache_dir,
@@ -83,6 +90,7 @@ impl Config {
             ocr_backend,
             det_model_path,
             rec_model_path,
+            onnx_sessions,
         })
     }
 }
