@@ -30,6 +30,13 @@ impl ClipBatcher {
                 tokio::select! {
                     Some(req) = rx.recv() => {
                         buffer.push(req);
+                        // Drain all immediately-available items (burst absorption)
+                        while buffer.len() < max_batch {
+                            match rx.try_recv() {
+                                Ok(r) => buffer.push(r),
+                                Err(_) => break,
+                            }
+                        }
                         if buffer.len() >= max_batch {
                             flush(&mut buffer, &clip_client).await;
                             interval.reset();
