@@ -92,7 +92,7 @@ impl AppState {
         } else if config.ocr_backend == "vision" {
             #[cfg(target_os = "macos")]
             {
-                Arc::new(VisionOcrBackend::new())
+                Arc::new(VisionOcrBackend::new(config.ocr_min_confidence))
             }
             #[cfg(not(target_os = "macos"))]
             {

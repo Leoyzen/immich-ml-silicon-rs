@@ -19,6 +19,7 @@ pub struct Config {
     pub onnx_sessions: usize,
     pub clip_batch_size: usize,
     pub clip_batch_interval_ms: u64,
+    pub ocr_min_confidence: f32,
 }
 
 impl Config {
@@ -88,6 +89,11 @@ impl Config {
             .parse::<u64>()
             .unwrap_or(50);
 
+        let ocr_min_confidence = std::env::var("IMMICH_ML_OCR_MIN_CONFIDENCE")
+            .unwrap_or_else(|_| "0.1".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.1);
+
         Ok(Self {
             port,
             cache_dir,
@@ -106,6 +112,7 @@ impl Config {
             onnx_sessions,
             clip_batch_size,
             clip_batch_interval_ms,
+            ocr_min_confidence,
         })
     }
 }

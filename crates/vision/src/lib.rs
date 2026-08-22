@@ -8,17 +8,19 @@ use immich_ml_backends::{BackendError, FaceDetectionBackend, FaceDetectionOutput
 
 // ── VisionOcrBackend ───────────────────────────────────────────
 
-pub struct VisionOcrBackend;
+pub struct VisionOcrBackend {
+    min_confidence: f32,
+}
 
 impl VisionOcrBackend {
-    pub fn new() -> Self {
-        Self
+    pub fn new(min_confidence: f32) -> Self {
+        Self { min_confidence }
     }
 }
 
 impl Default for VisionOcrBackend {
     fn default() -> Self {
-        Self::new()
+        Self::new(0.1)
     }
 }
 
@@ -53,12 +55,9 @@ mod macos {
         VNRequestTextRecognitionLevel,
     };
 
-    /// Minimum confidence threshold for accepting a recognition candidate.
-    const MIN_OCR_CONFIDENCE: f32 = 0.01;
-
     // ── OCR ────────────────────────────────────────────────────
 
-    pub fn vision_ocr_sync(image_bytes: &[u8]) -> Result<OcrResult, BackendError> {
+    pub fn vision_ocr_sync(image_bytes: &[u8], min_confidence: f32) -> Result<OcrResult, BackendError> {
         autoreleasepool(|_pool| {
             // Build the text-recognition request.
             let request = VNRecognizeTextRequest::new();
@@ -100,7 +99,7 @@ mod macos {
                     let candidates = obs.topCandidates(1);
                     if let Some(candidate) = candidates.firstObject() {
                         let confidence = candidate.confidence();
-                        if confidence < MIN_OCR_CONFIDENCE {
+                        if confidence < min_confidence {
                             continue;
                         }
 
@@ -209,7 +208,8 @@ mod macos {
 impl OcrBackend for VisionOcrBackend {
     async fn recognize(&self, image_bytes: &[u8]) -> Result<OcrResult, BackendError> {
         let bytes = image_bytes.to_vec();
-        tokio::task::spawn_blocking(move || macos::vision_ocr_sync(&bytes))
+        let min_conf = self.min_confidence;
+        tokio::task::spawn_blocking(move || macos::vision_ocr_sync(&bytes, min_conf))
             .await
             .map_err(|e| BackendError::Other(format!("Join error: {}", e)))?
     }
