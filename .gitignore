@@ -6,4 +6,5 @@
 *.onnx
 *.mlmodel
 .env
+.envrc
 *.log
