@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::schema::{InferenceEntry, Payload, PipelineRequest, PipelineEntry};
 use crate::state::AppState;
-use immich_ml_backends::{BackendError, ImageInput, FaceDetectionOutput};
+use immich_ml_backends::{BackendError, ImageInput, DecodedImage, FaceDetectionOutput};
 
 pub async fn ping() -> &'static str {
     "pong"
@@ -53,22 +53,22 @@ pub async fn predict(
 
     // 3. Determine payload and image dimensions
     let is_image = image_bytes.is_some();
-    let (payload, image_dims) = if let Some(bytes) = image_bytes {
-        // Decode image to get dimensions (before any preprocessing)
-        match image::load_from_memory(&bytes) {
-            Ok(img) => {
-                let (w, h) = (img.width(), img.height());
+    let (payload, image_dims, decoded_image) = if let Some(bytes) = image_bytes {
+        // Decode image once to get both dimensions AND RGBA pixels (with HEIC support on macOS).
+        match immich_ml_imaging::decode_image(&bytes) {
+            Ok((rgba, w, h)) => {
                 if w == 0 || h == 0 {
                     return (StatusCode::BAD_REQUEST, "Image has zero width or height").into_response();
                 }
-                (Payload::Image(bytes), Some((w, h)))
+                let decoded = DecodedImage { rgba, width: w, height: h };
+                (Payload::Image(bytes), Some((w, h)), Some(decoded))
             }
             Err(e) => {
                 return (StatusCode::BAD_REQUEST, format!("Image decode error: {}", e)).into_response();
             }
         }
     } else if let Some(t) = text {
-        (Payload::Text(t), None)
+        (Payload::Text(t), None, None)
     } else {
         return (StatusCode::BAD_REQUEST, "Either image or text must be provided").into_response();
     };
@@ -122,6 +122,7 @@ pub async fn predict(
                         bytes: bytes.clone(),
                         width: image_dims.map(|(w, _)| w).unwrap_or(0),
                         height: image_dims.map(|(_, h)| h).unwrap_or(0),
+                        decoded: decoded_image.clone(),
                     },
                     Payload::Text(_) => {
                         return (StatusCode::BAD_REQUEST, "Face detection requires image").into_response();
@@ -160,6 +161,7 @@ pub async fn predict(
                         bytes: bytes.clone(),
                         width: image_dims.map(|(w, _)| w).unwrap_or(0),
                         height: image_dims.map(|(_, h)| h).unwrap_or(0),
+                        decoded: decoded_image.clone(),
                     },
                     Payload::Text(_) => {
                         return (StatusCode::BAD_REQUEST, "Face recognition requires image").into_response();

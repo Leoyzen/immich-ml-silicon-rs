@@ -5,12 +5,22 @@ use async_trait::async_trait;
 
 // ── Shared types ──────────────────────────────────────────────
 
+/// Pre-decoded RGBA image data (avoids re-decoding for each pipeline stage).
+#[derive(Debug, Clone)]
+pub struct DecodedImage {
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Image input with decoded dimensions (pre-preprocessing).
 #[derive(Debug, Clone)]
 pub struct ImageInput {
     pub bytes: Vec<u8>,
     pub width: u32,
     pub height: u32,
+    /// Pre-decoded RGBA pixels, if available, to avoid redundant decoding.
+    pub decoded: Option<DecodedImage>,
 }
 
 /// Unified error type for all backends.

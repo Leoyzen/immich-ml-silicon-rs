@@ -13,7 +13,7 @@ reqwest = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 rand = { workspace = true }
-image = { workspace = true }
+immich-ml-imaging = { path = "../imaging" }
 immich-ml-models = { path = "../models" }
 immich-ml-cloud = { path = "../cloud" }
 immich-ml-backends = { path = "../backends" }

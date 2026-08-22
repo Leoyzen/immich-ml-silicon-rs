@@ -52,24 +52,33 @@ impl FaceDetector {
         Ok(Self { sessions })
     }
 
-    /// Run face detection on image bytes.
+    /// Run face detection on image.
+    /// Accepts ImageInput so pre-decoded RGBA can be reused if available.
     /// Returns boxes [x1,y1,x2,y2], scores, and 5 landmarks per face.
-    pub fn detect(&self, image_bytes: &[u8], min_score: f32) -> Result<FaceDetectionOutput, String> {
-        // 1. Decode image
-        let (rgba, w, h) = decode_image(image_bytes)?;
+    pub fn detect(&self, image: &ImageInput, min_score: f32) -> Result<FaceDetectionOutput, String> {
+        // 1. Decode image (use pre-decoded RGBA if available)
+        let decoded_fallback;
+        let (rgba, w, h) = if let Some(ref d) = image.decoded {
+            (d.rgba.as_slice(), d.width, d.height)
+        } else {
+            decoded_fallback = decode_image(&image.bytes)?;
+            (decoded_fallback.0.as_slice(), decoded_fallback.1, decoded_fallback.2)
+        };
 
         // 2. Letterbox to 640×640
-        let (canvas, scale) = letterbox((&rgba, w, h), DET_SIZE);
+        let (canvas, scale) = letterbox((rgba, w, h), DET_SIZE);
 
         // 3. Convert to NCHW float32, normalize: mean=127.5, std=128
-        let mut input_data = Array4::<f32>::zeros((1, 3, DET_SIZE as usize, DET_SIZE as usize));
-        for y in 0..DET_SIZE as usize {
-            for x in 0..DET_SIZE as usize {
-                let pixel = canvas.get_pixel(x as u32, y as u32);
-                input_data[[0, 0, y, x]] = pixel[0] as f32;
-                input_data[[0, 1, y, x]] = pixel[1] as f32;
-                input_data[[0, 2, y, x]] = pixel[2] as f32;
-            }
+        // Use bulk pixel access via into_raw() instead of per-pixel get_pixel().
+        let det_size = DET_SIZE as usize;
+        let mut input_data = Array4::<f32>::zeros((1, 3, det_size, det_size));
+        let raw = canvas.into_raw(); // Vec<u8>, RGB order, 3 bytes per pixel
+        for (i, chunk) in raw.chunks_exact(3).enumerate() {
+            let y = i / det_size;
+            let x = i % det_size;
+            input_data[[0, 0, y, x]] = chunk[0] as f32;
+            input_data[[0, 1, y, x]] = chunk[1] as f32;
+            input_data[[0, 2, y, x]] = chunk[2] as f32;
         }
         normalize(input_data.as_slice_mut().unwrap(), 127.5, 128.0);
 
@@ -163,6 +172,6 @@ impl FaceDetector {
 #[async_trait::async_trait]
 impl FaceDetectionBackend for FaceDetector {
     async fn detect(&self, image: &ImageInput, min_score: f32) -> Result<FaceDetectionOutput, BackendError> {
-        FaceDetector::detect(self, &image.bytes, min_score).map_err(BackendError::Other)
+        FaceDetector::detect(self, image, min_score).map_err(BackendError::Other)
     }
 }

@@ -946,9 +946,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
- "image",
  "immich-ml-backends",
  "immich-ml-cloud",
+ "immich-ml-imaging",
  "immich-ml-models",
  "immich-ml-vision",
  "multer",

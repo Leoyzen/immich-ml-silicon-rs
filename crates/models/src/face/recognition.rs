@@ -54,19 +54,26 @@ impl FaceRecognizer {
     }
 
     /// Run face recognition on detected faces.
+    /// Accepts ImageInput so pre-decoded RGBA can be reused if available.
     /// Returns one DetectedFace per input face with 512-d embedding.
     pub fn recognize(
         &self,
-        image_bytes: &[u8],
+        image: &ImageInput,
         detection: &FaceDetectionOutput,
     ) -> Result<Vec<DetectedFace>, String> {
         if detection.boxes.is_empty() {
             return Ok(Vec::new());
         }
 
-        // 1. Decode image
-        let (rgba, w, h) = decode_image(image_bytes)?;
-        let rgb = rgba_to_rgb_image(&rgba, w, h);
+        // 1. Decode image (use pre-decoded RGBA if available)
+        let decoded_fallback;
+        let (rgba, w, h) = if let Some(ref d) = image.decoded {
+            (d.rgba.as_slice(), d.width, d.height)
+        } else {
+            decoded_fallback = decode_image(&image.bytes)?;
+            (decoded_fallback.0.as_slice(), decoded_fallback.1, decoded_fallback.2)
+        };
+        let rgb = rgba_to_rgb_image(rgba, w, h);
 
         // 2. Process each face individually (batch=1) to avoid CoreML dynamic-shape errors
         // Pick least-contended session
@@ -100,14 +107,16 @@ impl FaceRecognizer {
             let aligned = align_face(&rgb, &kps);
 
             // Convert to CHW float32 [1, 3, 112, 112]
-            let mut crop = Array4::<f32>::zeros((1, 3, ALIGNED_SIZE as usize, ALIGNED_SIZE as usize));
-            for y in 0..ALIGNED_SIZE as usize {
-                for x in 0..ALIGNED_SIZE as usize {
-                    let pixel = aligned.get_pixel(x as u32, y as u32);
-                    crop[[0, 0, y, x]] = pixel[0] as f32;
-                    crop[[0, 1, y, x]] = pixel[1] as f32;
-                    crop[[0, 2, y, x]] = pixel[2] as f32;
-                }
+            // Use bulk pixel access via into_raw() instead of per-pixel get_pixel().
+            let aligned_size = ALIGNED_SIZE as usize;
+            let mut crop = Array4::<f32>::zeros((1, 3, aligned_size, aligned_size));
+            let raw = aligned.into_raw(); // Vec<u8>, RGB order, 3 bytes per pixel
+            for (i, chunk) in raw.chunks_exact(3).enumerate() {
+                let y = i / aligned_size;
+                let x = i % aligned_size;
+                crop[[0, 0, y, x]] = chunk[0] as f32;
+                crop[[0, 1, y, x]] = chunk[1] as f32;
+                crop[[0, 2, y, x]] = chunk[2] as f32;
             }
 
             // Normalize: mean=127.5, std=127.5
@@ -156,6 +165,6 @@ impl FaceRecognizer {
 #[async_trait::async_trait]
 impl FaceRecognitionBackend for FaceRecognizer {
     async fn recognize(&self, image: &ImageInput, detection: &FaceDetectionOutput) -> Result<Vec<DetectedFace>, BackendError> {
-        FaceRecognizer::recognize(self, &image.bytes, detection).map_err(BackendError::Other)
+        FaceRecognizer::recognize(self, image, detection).map_err(BackendError::Other)
     }
 }
