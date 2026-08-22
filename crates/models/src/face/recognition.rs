@@ -9,7 +9,7 @@ use ort::ep::coreml::{ModelFormat, SpecializationStrategy, ComputeUnits};
 use ort::value::Tensor;
 
 
-use crate::transforms::{decode_image, normalize};
+use crate::transforms::{decode_image, normalize, rgba_to_rgb_image};
 use crate::face::ops::{align_face, ALIGNED_SIZE};
 use crate::{FaceDetectionOutput, DetectedFace, BoundingBox};
 use immich_ml_backends::{FaceRecognitionBackend, ImageInput, BackendError};
@@ -65,8 +65,8 @@ impl FaceRecognizer {
         }
 
         // 1. Decode image
-        let img = decode_image(image_bytes)?;
-        let rgb = img.to_rgb8();
+        let (rgba, w, h) = decode_image(image_bytes)?;
+        let rgb = rgba_to_rgb_image(&rgba, w, h);
 
         // 2. Process each face individually (batch=1) to avoid CoreML dynamic-shape errors
         // Pick least-contended session

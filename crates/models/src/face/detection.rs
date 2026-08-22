@@ -56,11 +56,10 @@ impl FaceDetector {
     /// Returns boxes [x1,y1,x2,y2], scores, and 5 landmarks per face.
     pub fn detect(&self, image_bytes: &[u8], min_score: f32) -> Result<FaceDetectionOutput, String> {
         // 1. Decode image
-        let img = decode_image(image_bytes)?;
-        let (orig_w, orig_h) = (img.width(), img.height());
+        let (rgba, w, h) = decode_image(image_bytes)?;
 
         // 2. Letterbox to 640×640
-        let (canvas, scale) = letterbox(&img, DET_SIZE);
+        let (canvas, scale) = letterbox((&rgba, w, h), DET_SIZE);
 
         // 3. Convert to NCHW float32, normalize: mean=127.5, std=128
         let mut input_data = Array4::<f32>::zeros((1, 3, DET_SIZE as usize, DET_SIZE as usize));

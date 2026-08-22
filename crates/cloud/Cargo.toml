@@ -13,4 +13,5 @@ base64 = { workspace = true }
 rand = { workspace = true }
 image = { workspace = true }
 immich-ml-backends = { path = "../backends" }
+immich-ml-imaging = { path = "../imaging" }
 async-trait = { workspace = true }

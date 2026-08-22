@@ -1,0 +1,13 @@
+[package]
+name = "immich-ml-imaging"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-image-io = { version = "0.3", default-features = false, features = ["CGImageSource", "CGImageProperties", "objc2-core-graphics", "std"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGImage", "CGBitmapContext", "CGContext", "CGColorSpace", "CGDataProvider", "bitflags", "std"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["CFData", "CFDictionary", "CFNumber", "CFString", "CFArray", "CFURL", "CFCGTypes", "CFBase", "std"] }

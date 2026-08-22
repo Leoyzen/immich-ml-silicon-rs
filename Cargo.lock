@@ -904,6 +904,7 @@ dependencies = [
  "base64 0.22.1",
  "image",
  "immich-ml-backends",
+ "immich-ml-imaging",
  "rand 0.8.7",
  "reqwest",
  "serde",
@@ -913,12 +914,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "immich-ml-imaging"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-image-io",
+]
+
+[[package]]
 name = "immich-ml-models"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "image",
  "immich-ml-backends",
+ "immich-ml-imaging",
  "ndarray",
  "ort",
  "reqwest",

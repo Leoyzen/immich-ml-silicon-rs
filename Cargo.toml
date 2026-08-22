@@ -5,6 +5,7 @@ members = [
     "crates/cloud",
     "crates/backends",
     "crates/vision",
+    "crates/imaging",
     "spikes/ort-coreml",
     "spikes/dashscope-api",
 ]

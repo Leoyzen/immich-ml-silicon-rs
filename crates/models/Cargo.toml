@@ -12,4 +12,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 immich-ml-backends = { path = "../backends" }
+immich-ml-imaging = { path = "../imaging" }
 async-trait = { workspace = true }

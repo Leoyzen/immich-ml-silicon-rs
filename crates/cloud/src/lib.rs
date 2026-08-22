@@ -175,27 +175,31 @@ fn prepare_image_data_uri(image_bytes: &[u8]) -> Result<String, DashScopeError> 
 }
 
 fn resize_image(image_bytes: &[u8]) -> Result<Vec<u8>, DashScopeError> {
-    let img = image::load_from_memory(image_bytes)
+    // Decode + downscale in one pass using the imaging crate (max 1024px longest side).
+    let (rgba, w, h) = immich_ml_imaging::decode_thumbnail(image_bytes, 1024)
         .map_err(|e| DashScopeError::Parse(format!("Image decode: {}", e)))?;
 
-    let mut current = img;
-    let mut quality = 85u8;
+    // Convert RGBA → RGB and re-encode as JPEG using the `image` crate.
+    let mut rgb_pixels = Vec::with_capacity((w * h * 3) as usize);
+    for chunk in rgba.chunks_exact(4) {
+        rgb_pixels.push(chunk[0]);
+        rgb_pixels.push(chunk[1]);
+        rgb_pixels.push(chunk[2]);
+    }
+    let rgb = image::RgbImage::from_raw(w, h, rgb_pixels)
+        .ok_or_else(|| DashScopeError::Parse("Failed to create RgbImage".into()))?;
+    let dynamic = image::DynamicImage::ImageRgb8(rgb);
 
+    let mut quality = 85u8;
     loop {
         let mut buf = std::io::Cursor::new(Vec::new());
-        current
-            .write_to(&mut buf, image::ImageFormat::Jpeg)
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, quality);
+        encoder.encode_image(&dynamic)
             .map_err(|e| DashScopeError::Parse(format!("Image encode: {}", e)))?;
-
         let encoded = buf.into_inner();
         if encoded.len() <= MAX_IMAGE_BYTES || quality <= 20 {
             return Ok(encoded);
         }
-
-        // Resize to 75% and lower quality
-        let new_w = (current.width() as f32 * 0.75) as u32;
-        let new_h = (current.height() as f32 * 0.75) as u32;
-        current = current.resize(new_w.max(1), new_h.max(1), image::imageops::FilterType::Lanczos3);
         quality -= 10;
     }
 }
