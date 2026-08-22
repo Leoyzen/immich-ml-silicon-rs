@@ -50,6 +50,7 @@ impl From<DashScopeError> for immich_ml_backends::BackendError {
     }
 }
 
+#[derive(Clone)]
 pub struct DashScopeClient {
     http: reqwest::Client,
     api_key: String,
@@ -252,44 +253,32 @@ fn parse_ocr_response(resp: serde_json::Value) -> Result<OcrResult, DashScopeErr
                 if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
                     for item in content {
                         if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                            // Split text into lines, synthesize normalized boxes
-                            for (i, line) in text.lines().enumerate() {
+                            // DashScope OCR does not provide bounding boxes.
+                            // Return text only with empty box arrays so the text
+                            // remains searchable without claiming spatial accuracy.
+                            for line in text.lines() {
                                 let line = line.trim();
                                 if line.is_empty() {
                                     continue;
                                 }
                                 result.text.push(line.to_string());
-                                // Synthesize box: full width, line-height slice
-                                let y_start = (i as f64) / (text.lines().count() as f64);
-                                let y_end = ((i + 1) as f64) / (text.lines().count() as f64);
-                                result.box_coords.extend_from_slice(&[
-                                    0.0, y_start,
-                                    1.0, y_start,
-                                    1.0, y_end,
-                                    0.0, y_end,
-                                ]);
-                                result.box_score.push(0.9);
+                                result.box_coords.extend_from_slice(&[]);
+                                result.box_score.push(0.0);
                                 result.text_score.push(0.9);
                             }
                         }
                     }
                 } else if let Some(text) = message.get("content").and_then(|c| c.as_str()) {
                     // content might be a plain string
-                    for (i, line) in text.lines().enumerate() {
+                    // DashScope OCR does not provide bounding boxes.
+                    for line in text.lines() {
                         let line = line.trim();
                         if line.is_empty() {
                             continue;
                         }
                         result.text.push(line.to_string());
-                        let y_start = (i as f64) / (text.lines().count() as f64);
-                        let y_end = ((i + 1) as f64) / (text.lines().count() as f64);
-                        result.box_coords.extend_from_slice(&[
-                            0.0, y_start,
-                            1.0, y_start,
-                            1.0, y_end,
-                            0.0, y_end,
-                        ]);
-                        result.box_score.push(0.9);
+                        result.box_coords.extend_from_slice(&[]);
+                        result.box_score.push(0.0);
                         result.text_score.push(0.9);
                     }
                 }

@@ -1,7 +1,7 @@
 //! ArcFace face recognition — port of immich_ml/models/facial_recognition/recognition.py
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use ndarray::Array4;
 use ort::session::{Session, builder::GraphOptimizationLevel};
 use ort::ep::CoreML;
@@ -15,7 +15,7 @@ use crate::{FaceDetectionOutput, DetectedFace, BoundingBox};
 use immich_ml_backends::{FaceRecognitionBackend, ImageInput, BackendError};
 
 pub struct FaceRecognizer {
-    sessions: Vec<Mutex<Session>>,
+    sessions: Arc<Vec<Mutex<Session>>>,
 }
 
 impl FaceRecognizer {
@@ -50,14 +50,14 @@ impl FaceRecognizer {
 
         tracing::info!("FaceRecognizer loaded with {} session(s)", num_sessions);
 
-        Ok(Self { sessions })
+        Ok(Self { sessions: Arc::new(sessions) })
     }
 
-    /// Run face recognition on detected faces.
+    /// Run face recognition on detected faces (sync, CPU-bound).
     /// Accepts ImageInput so pre-decoded RGBA can be reused if available.
     /// Returns one DetectedFace per input face with 512-d embedding.
-    pub fn recognize(
-        &self,
+    fn recognize_with_sessions(
+        sessions: &[Mutex<Session>],
         image: &ImageInput,
         detection: &FaceDetectionOutput,
     ) -> Result<Vec<DetectedFace>, String> {
@@ -79,7 +79,7 @@ impl FaceRecognizer {
         // Pick least-contended session
         let mut session_idx = 0usize;
         let mut session_guard = None;
-        for (i, s) in self.sessions.iter().enumerate() {
+        for (i, s) in sessions.iter().enumerate() {
             if let Ok(guard) = s.try_lock() {
                 session_idx = i;
                 session_guard = Some(guard);
@@ -90,7 +90,7 @@ impl FaceRecognizer {
             Some(g) => g,
             None => {
                 session_idx = 0;
-                self.sessions[0].lock().unwrap()
+                sessions[0].lock().unwrap()
             }
         };
         tracing::trace!("FaceRecognizer using session {}", session_idx);
@@ -165,6 +165,14 @@ impl FaceRecognizer {
 #[async_trait::async_trait]
 impl FaceRecognitionBackend for FaceRecognizer {
     async fn recognize(&self, image: &ImageInput, detection: &FaceDetectionOutput) -> Result<Vec<DetectedFace>, BackendError> {
-        FaceRecognizer::recognize(self, image, detection).map_err(BackendError::Other)
+        let sessions = self.sessions.clone();
+        let image = image.clone();
+        let detection = detection.clone();
+        tokio::task::spawn_blocking(move || {
+            FaceRecognizer::recognize_with_sessions(&sessions, &image, &detection)
+        })
+        .await
+        .map_err(|e| BackendError::Other(format!("Join error: {}", e)))?
+        .map_err(BackendError::Other)
     }
 }

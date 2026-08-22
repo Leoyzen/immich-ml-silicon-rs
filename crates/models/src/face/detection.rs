@@ -1,7 +1,7 @@
 //! SCRFD face detection — port of immich_ml/models/facial_recognition/detection.py
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use ndarray::Array4;
 use ort::session::{Session, builder::GraphOptimizationLevel};
 use ort::ep::CoreML;
@@ -14,7 +14,7 @@ use crate::FaceDetectionOutput;
 use immich_ml_backends::{FaceDetectionBackend, ImageInput, BackendError};
 
 pub struct FaceDetector {
-    sessions: Vec<Mutex<Session>>,
+    sessions: Arc<Vec<Mutex<Session>>>,
 }
 
 impl FaceDetector {
@@ -49,13 +49,17 @@ impl FaceDetector {
 
         tracing::info!("FaceDetector loaded with {} session(s)", num_sessions);
 
-        Ok(Self { sessions })
+        Ok(Self { sessions: Arc::new(sessions) })
     }
 
-    /// Run face detection on image.
+    /// Run face detection on image (sync, CPU-bound).
     /// Accepts ImageInput so pre-decoded RGBA can be reused if available.
     /// Returns boxes [x1,y1,x2,y2], scores, and 5 landmarks per face.
-    pub fn detect(&self, image: &ImageInput, min_score: f32) -> Result<FaceDetectionOutput, String> {
+    fn detect_with_sessions(
+        sessions: &[Mutex<Session>],
+        image: &ImageInput,
+        min_score: f32,
+    ) -> Result<FaceDetectionOutput, String> {
         // 1. Decode image (use pre-decoded RGBA if available)
         let decoded_fallback;
         let (rgba, w, h) = if let Some(ref d) = image.decoded {
@@ -88,7 +92,7 @@ impl FaceDetector {
 
         let mut session_idx = 0usize;
         let mut session_guard = None;
-        for (i, s) in self.sessions.iter().enumerate() {
+        for (i, s) in sessions.iter().enumerate() {
             if let Ok(guard) = s.try_lock() {
                 session_idx = i;
                 session_guard = Some(guard);
@@ -99,7 +103,7 @@ impl FaceDetector {
             Some(g) => g,
             None => {
                 session_idx = 0;
-                self.sessions[0].lock().unwrap()
+                sessions[0].lock().unwrap()
             }
         };
         tracing::trace!("FaceDetector using session {}", session_idx);
@@ -172,6 +176,13 @@ impl FaceDetector {
 #[async_trait::async_trait]
 impl FaceDetectionBackend for FaceDetector {
     async fn detect(&self, image: &ImageInput, min_score: f32) -> Result<FaceDetectionOutput, BackendError> {
-        FaceDetector::detect(self, image, min_score).map_err(BackendError::Other)
+        let sessions = self.sessions.clone();
+        let image = image.clone();
+        tokio::task::spawn_blocking(move || {
+            FaceDetector::detect_with_sessions(&sessions, &image, min_score)
+        })
+        .await
+        .map_err(|e| BackendError::Other(format!("Join error: {}", e)))?
+        .map_err(BackendError::Other)
     }
 }

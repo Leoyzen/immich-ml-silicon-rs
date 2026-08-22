@@ -8,6 +8,7 @@ pub mod download;
 pub use face::detection::FaceDetector;
 pub use face::recognition::FaceRecognizer;
 pub use face::ops::{DET_SIZE, ALIGNED_SIZE};
+pub use download::ensure_models;
 
 // Re-export shared types from the backends crate.
 pub use immich_ml_backends::{

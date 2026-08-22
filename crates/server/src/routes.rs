@@ -128,14 +128,15 @@ pub async fn predict(
                         return (StatusCode::BAD_REQUEST, "Face detection requires image").into_response();
                     }
                 };
-                let min_score = 0.5; // default min_score
-                match state.face_detector.detect(&image_input, min_score).await {
+                let min_score = entry.options.get("minScore")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32)
+                    .unwrap_or(0.5);
+                match run_face_detection(&state, &image_input, min_score).await {
                     Ok(result) => {
                         face_detection = Some(result);
                     }
-                    Err(e) => {
-                        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Face detection failed: {}", e)).into_response();
-                    }
+                    Err(status_msg) => return status_msg.into_response(),
                 }
             }
             _ => {
@@ -167,13 +168,11 @@ pub async fn predict(
                         return (StatusCode::BAD_REQUEST, "Face recognition requires image").into_response();
                     }
                 };
-                match state.face_recognizer.recognize(&image_input, detection).await {
+                match run_face_recognition(&state, &image_input, detection).await {
                     Ok(faces) => {
                         response.insert("facial-recognition".to_string(), json!(faces));
                     }
-                    Err(e) => {
-                        return (StatusCode::INTERNAL_SERVER_ERROR, format!("Face recognition failed: {}", e)).into_response();
-                    }
+                    Err(status_msg) => return status_msg.into_response(),
                 }
             }
             _ => {
@@ -262,7 +261,27 @@ async fn run_ocr(state: &AppState, payload: &Payload) -> Result<immich_ml_backen
     }
 }
 
-/// Call a backend function with concurrency control, retry, and circuit breaker.
+async fn run_face_detection(
+    state: &AppState,
+    image_input: &ImageInput,
+    min_score: f32,
+) -> Result<FaceDetectionOutput, ErrorResponse> {
+    call_with_retry(state, || async {
+        state.face_detector.detect(image_input, min_score).await
+    }).await
+}
+
+async fn run_face_recognition(
+    state: &AppState,
+    image_input: &ImageInput,
+    detection: &FaceDetectionOutput,
+) -> Result<Vec<immich_ml_backends::DetectedFace>, ErrorResponse> {
+    call_with_retry(state, || async {
+        state.face_recognizer.recognize(image_input, detection).await
+    }).await
+}
+
+/// Call a backend function with concurrency control, retry, timeout, and circuit breaker.
 async fn call_with_retry<F, Fut, T>(
     state: &AppState,
     f: F,
@@ -275,27 +294,46 @@ where
         return Err((StatusCode::INTERNAL_SERVER_ERROR, "Circuit breaker tripped".into()));
     }
 
-    let _permit = state.concurrency.acquire().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
     let mut last_err = None;
+    let timeout = state.concurrency.timeout();
+
     for attempt in 0..=state.concurrency.max_retries() {
-        match f().await {
-            Ok(result) => {
+        // Acquire permit per-attempt so it is not held during backoff sleep
+        let _permit = state.concurrency.acquire().await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        match tokio::time::timeout(timeout, f()).await {
+            Ok(Ok(result)) => {
                 state.concurrency.record_success();
                 return Ok(result);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 if !e.is_retriable() || attempt == state.concurrency.max_retries() {
                     last_err = Some(e);
                     break;
                 }
                 last_err = Some(e);
-                let delay = state.concurrency.backoff_delay(attempt);
-                tracing::warn!("Backend call failed (attempt {}), retrying in {:?}: {}", attempt, delay, last_err.as_ref().unwrap());
-                tokio::time::sleep(delay).await;
+            }
+            Err(_elapsed) => {
+                // Timeout is retriable
+                let e = BackendError::Network("Request timed out".into());
+                if !e.is_retriable() || attempt == state.concurrency.max_retries() {
+                    last_err = Some(e);
+                    break;
+                }
+                last_err = Some(e);
             }
         }
+
+        // Release permit before sleeping so other tasks can proceed during backoff
+        drop(_permit);
+
+        let delay = state.concurrency.backoff_delay(attempt);
+        tracing::warn!(
+            "Backend call failed (attempt {}), retrying in {:?}: {}",
+            attempt, delay, last_err.as_ref().unwrap()
+        );
+        tokio::time::sleep(delay).await;
     }
 
     state.concurrency.record_failure();

@@ -50,26 +50,30 @@ impl AppState {
             return Err(format!("Unknown face_recognition_backend: {}", config.face_recognition_backend).into());
         };
 
-        // CLIP backend
-        let clip: Arc<dyn ClipBackend> = if config.clip_backend == "dashscope" {
-            Arc::new(immich_ml_cloud::DashScopeClient::new(
+        // CLIP + OCR backends.
+        // When both use DashScope, share a single DashScopeClient instance
+        // (cloning is cheap — reqwest::Client shares its connection pool).
+        let dashscope_client = if config.clip_backend == "dashscope" || config.ocr_backend == "dashscope" {
+            Some(immich_ml_cloud::DashScopeClient::new(
                 config.dashscope_api_key.clone(),
                 config.clip_model.clone(),
                 config.ocr_model.clone(),
                 config.clip_dim,
             ))
         } else {
+            None
+        };
+
+        let clip: Arc<dyn ClipBackend> = if config.clip_backend == "dashscope" {
+            Arc::new(dashscope_client.as_ref().unwrap().clone())
+        } else {
             return Err(format!("Unknown clip_backend: {}", config.clip_backend).into());
         };
 
-        // OCR backend (reuse the same DashScope client type)
         let ocr: Arc<dyn OcrBackend> = if config.ocr_backend == "dashscope" {
-            Arc::new(immich_ml_cloud::DashScopeClient::new(
-                config.dashscope_api_key.clone(),
-                config.clip_model.clone(),
-                config.ocr_model.clone(),
-                config.clip_dim,
-            ))
+            // Reuse the same DashScopeClient — cloning shares the reqwest
+            // connection pool, avoiding duplicate connection overhead.
+            Arc::new(dashscope_client.as_ref().unwrap().clone())
         } else if config.ocr_backend == "vision" {
             #[cfg(target_os = "macos")]
             {

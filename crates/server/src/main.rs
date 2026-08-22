@@ -22,6 +22,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Config: port={}, cache_dir={}, device={}, max_concurrency={}",
         cfg.port, cfg.cache_dir.display(), cfg.device, cfg.max_concurrency);
 
+    // Ensure face models are downloaded before loading them (ONNX backends only).
+    // The vision backend uses macOS native frameworks and needs no ONNX files.
+    if cfg.face_detection_backend == "onnx" || cfg.face_recognition_backend == "onnx" {
+        if !cfg.det_model_path.exists() || !cfg.rec_model_path.exists() {
+            tracing::info!("Downloading face models...");
+            immich_ml_models::ensure_models(&cfg.cache_dir).await
+                .map_err(|e| format!("Failed to download face models: {}", e))?;
+            tracing::info!("Models ready");
+        }
+    }
+
     let state = Arc::new(state::AppState::new(cfg.clone()).await?);
 
     let app = Router::new()
