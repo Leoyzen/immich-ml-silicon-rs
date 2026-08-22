@@ -178,6 +178,8 @@ pub async fn predict(
                     Err(status_msg) => return status_msg.into_response(),
                 }
             }
+            // OCR recognition is handled by ocr/detection in the without_deps loop — skip silently
+            ("ocr", "recognition") => {}
             _ => {
                 tracing::warn!("[{}] Unknown dependent task: {}/{}", request_id, entry.task, entry.r#type);
             }
