@@ -121,6 +121,17 @@ pub trait ClipBackend: Send + Sync {
     async fn encode_image(&self, image_bytes: &[u8]) -> Result<Vec<f32>, BackendError>;
     /// Encode text into a vector embedding.
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>, BackendError>;
+
+    /// Encode multiple images in a single batch call.
+    /// Returns embeddings in the same order as the input images.
+    /// Default implementation calls `encode_image` one by one.
+    async fn encode_image_batch(&self, images: &[Vec<u8>]) -> Result<Vec<Vec<f32>>, BackendError> {
+        let mut results = Vec::with_capacity(images.len());
+        for img in images {
+            results.push(self.encode_image(img).await?);
+        }
+        Ok(results)
+    }
 }
 
 #[async_trait]

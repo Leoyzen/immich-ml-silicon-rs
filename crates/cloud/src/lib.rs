@@ -87,6 +87,37 @@ impl DashScopeClient {
         parse_embedding_response(resp)
     }
 
+    /// CLIP visual batch encoding: embed multiple images in a single API call.
+    /// Uses `enable_fusion: false` so each image gets its own independent embedding.
+    pub async fn clip_visual_batch(&self, images: &[Vec<u8>]) -> Result<Vec<Vec<f32>>, DashScopeError> {
+        if images.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Prepare all image data URIs
+        let contents: Vec<serde_json::Value> = images
+            .iter()
+            .map(|img| {
+                let data_uri = prepare_image_data_uri(img)?;
+                Ok::<_, DashScopeError>(serde_json::json!({"image": data_uri}))
+            })
+            .collect::<Result<_, _>>()?;
+
+        let body = serde_json::json!({
+            "model": &self.clip_model,
+            "input": {
+                "contents": contents
+            },
+            "parameters": {
+                "enable_fusion": false,
+                "dimension": self.clip_dim
+            }
+        });
+
+        let resp = self.post_api(MULTIMODAL_EMBEDDING_URL, &body).await?;
+        parse_batch_embedding_response(resp)
+    }
+
     /// CLIP textual encoding: embed text into a clip_dim-d vector.
     pub async fn clip_textual(&self, text: &str) -> Result<Vec<f32>, DashScopeError> {
         let body = serde_json::json!({
@@ -219,6 +250,8 @@ struct EmbeddingOutput {
 
 #[derive(Deserialize)]
 struct EmbeddingItem {
+    #[serde(default)]
+    index: usize,
     embedding: Vec<f32>,
 }
 
@@ -233,6 +266,18 @@ fn parse_embedding_response(resp: serde_json::Value) -> Result<Vec<f32>, DashSco
         .next()
         .map(|item| item.embedding)
         .ok_or_else(|| DashScopeError::Parse("No embeddings in response".into()))
+}
+
+/// Parse a batch embedding response — returns embeddings sorted by their `index` field
+/// to ensure correct mapping to the input image order.
+fn parse_batch_embedding_response(resp: serde_json::Value) -> Result<Vec<Vec<f32>>, DashScopeError> {
+    let parsed: EmbeddingResponse = serde_json::from_value(resp)
+        .map_err(|e| DashScopeError::Parse(format!("Batch embedding response: {}", e)))?;
+
+    let mut items = parsed.output.embeddings;
+    items.sort_by_key(|item| item.index);
+
+    Ok(items.into_iter().map(|item| item.embedding).collect())
 }
 
 /// Parse OCR response from qwen-vl-ocr.
@@ -295,6 +340,9 @@ fn parse_ocr_response(resp: serde_json::Value) -> Result<OcrResult, DashScopeErr
 impl immich_ml_backends::ClipBackend for DashScopeClient {
     async fn encode_image(&self, image_bytes: &[u8]) -> Result<Vec<f32>, immich_ml_backends::BackendError> {
         DashScopeClient::clip_visual(self, image_bytes).await.map_err(Into::into)
+    }
+    async fn encode_image_batch(&self, images: &[Vec<u8>]) -> Result<Vec<Vec<f32>>, immich_ml_backends::BackendError> {
+        DashScopeClient::clip_visual_batch(self, images).await.map_err(Into::into)
     }
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>, immich_ml_backends::BackendError> {
         DashScopeClient::clip_textual(self, text).await.map_err(Into::into)

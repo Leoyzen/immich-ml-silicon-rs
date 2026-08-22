@@ -231,13 +231,38 @@ fn flatten_entries(pipeline: PipelineRequest) -> (Vec<InferenceEntry>, Vec<Infer
 type ErrorResponse = (StatusCode, String);
 
 async fn run_clip_visual(state: &AppState, payload: &Payload) -> Result<Vec<f32>, ErrorResponse> {
-    let image_bytes = match payload {
-        Payload::Image(bytes) => bytes.as_slice(),
-        Payload::Text(_) => return Err((StatusCode::BAD_REQUEST, "CLIP visual requires image".into())),
-    };
-    call_with_retry(state, || async {
-        state.clip.encode_image(image_bytes).await
-    }).await
+    if let Some(ref batcher) = state.clip_batcher {
+        // Use batcher for DashScope — bypasses call_with_retry since batch
+        // handles its own errors internally. Circuit breaker check is still done here.
+        let image_bytes = match payload {
+            Payload::Image(bytes) => bytes.clone(),
+            Payload::Text(_) => return Err((StatusCode::BAD_REQUEST, "CLIP visual requires image".into())),
+        };
+
+        if state.concurrency.is_tripped() {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Circuit breaker tripped".into()));
+        }
+
+        match batcher.submit(image_bytes).await {
+            Ok(emb) => {
+                state.concurrency.record_success();
+                Ok(emb)
+            }
+            Err(e) => {
+                state.concurrency.record_failure();
+                Err((StatusCode::INTERNAL_SERVER_ERROR, format!("CLIP batch failed: {}", e)))
+            }
+        }
+    } else {
+        // Non-batching backends: use existing call_with_retry path
+        let image_bytes = match payload {
+            Payload::Image(bytes) => bytes.as_slice(),
+            Payload::Text(_) => return Err((StatusCode::BAD_REQUEST, "CLIP visual requires image".into())),
+        };
+        call_with_retry(state, || async {
+            state.clip.encode_image(image_bytes).await
+        }).await
+    }
 }
 
 async fn run_clip_textual(state: &AppState, payload: &Payload) -> Result<Vec<f32>, ErrorResponse> {

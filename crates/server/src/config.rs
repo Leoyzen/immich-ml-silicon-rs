@@ -17,6 +17,8 @@ pub struct Config {
     pub det_model_path: PathBuf,
     pub rec_model_path: PathBuf,
     pub onnx_sessions: usize,
+    pub clip_batch_size: usize,
+    pub clip_batch_interval_ms: u64,
 }
 
 impl Config {
@@ -75,6 +77,17 @@ impl Config {
             .unwrap_or(2)
             .clamp(1, 4);
 
+        let clip_batch_size = std::env::var("IMMICH_ML_CLIP_BATCH_SIZE")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<usize>()
+            .unwrap_or(10)
+            .clamp(1, 10);
+
+        let clip_batch_interval_ms = std::env::var("IMMICH_ML_CLIP_BATCH_INTERVAL_MS")
+            .unwrap_or_else(|_| "50".to_string())
+            .parse::<u64>()
+            .unwrap_or(50);
+
         Ok(Self {
             port,
             cache_dir,
@@ -91,6 +104,8 @@ impl Config {
             det_model_path,
             rec_model_path,
             onnx_sessions,
+            clip_batch_size,
+            clip_batch_interval_ms,
         })
     }
 }

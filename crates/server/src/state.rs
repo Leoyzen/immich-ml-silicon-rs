@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use crate::batcher::ClipBatcher;
 use crate::config::Config;
 use crate::concurrency::ConcurrencyControl;
 use immich_ml_backends::{FaceDetectionBackend, FaceRecognitionBackend, ClipBackend, OcrBackend};
@@ -14,6 +15,7 @@ pub struct AppState {
     pub face_recognizer: Arc<dyn FaceRecognitionBackend>,
     pub clip: Arc<dyn ClipBackend>,
     pub ocr: Arc<dyn OcrBackend>,
+    pub clip_batcher: Option<ClipBatcher>,
     pub request_counter: AtomicU64,
 }
 
@@ -72,6 +74,17 @@ impl AppState {
             return Err(format!("Unknown clip_backend: {}", config.clip_backend).into());
         };
 
+        // CLIP visual batcher — only for DashScope (which supports batch API calls)
+        let clip_batcher = if config.clip_backend == "dashscope" {
+            Some(ClipBatcher::new(
+                Arc::clone(&clip),
+                config.clip_batch_size,
+                config.clip_batch_interval_ms,
+            ))
+        } else {
+            None
+        };
+
         let ocr: Arc<dyn OcrBackend> = if config.ocr_backend == "dashscope" {
             // Reuse the same DashScopeClient — cloning shares the reqwest
             // connection pool, avoiding duplicate connection overhead.
@@ -96,6 +109,7 @@ impl AppState {
             face_recognizer,
             clip,
             ocr,
+            clip_batcher,
             request_counter: AtomicU64::new(0),
         })
     }

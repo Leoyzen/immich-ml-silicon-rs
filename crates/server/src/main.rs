@@ -8,6 +8,7 @@ mod concurrency;
 mod schema;
 mod state;
 mod routes;
+mod batcher;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
