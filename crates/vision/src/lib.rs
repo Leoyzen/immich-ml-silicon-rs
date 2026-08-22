@@ -54,7 +54,7 @@ mod macos {
     };
 
     /// Minimum confidence threshold for accepting a recognition candidate.
-    const MIN_OCR_CONFIDENCE: f32 = 0.5;
+    const MIN_OCR_CONFIDENCE: f32 = 0.01;
 
     // ── OCR ────────────────────────────────────────────────────
 
